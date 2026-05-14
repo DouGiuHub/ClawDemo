@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ClawStory - AI 自动生成demo</title>
+<style>
+:root {
+    --bg: #1a1b26;
+    --surface: #24283b;
+    --border: #3b4261;
+    --text: #c0caf5;
+    --text-dim: #565f89;
+    --accent: #7aa2f7;
+    --accent-hover: #89b4fa;
+    --error: #f7768e;
+    --success: #9ece6a;
+    --warn: #e0af68;
+    --sidebar-w: 160px;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans SC', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    margin-left: var(--sidebar-w);
+}
+
+/* ── Sidebar (fixed) ── */
+.sidebar {
+    position: fixed;
+    left: 0;
+    top: 0;
+    width: var(--sidebar-w);
+    height: 100vh;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 16px 0;
+    gap: 4px;
+    z-index: 50;
+}
+.sidebar-btn {
+    width: 140px;
+    height: 44px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text);
+    font-size: 13px;
+    cursor: pointer;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    transition: all 0.2s;
+}
+.sidebar-btn:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+.sidebar-btn .icon {
+    font-size: 18px;
+    line-height: 1;
+}
+.sidebar-btn .label {
+    font-size: 13px;
+    line-height: 1;
+}
+.sidebar-spacer { flex: 1; }
+
+/* ── Header ── */
+header {
+    padding: 12px 24px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+header h1 {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--accent);
+}
+#providerSelect {
+    font-size: 12px;
+    padding: 4px 8px;
+    border-radius: 6px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    outline: none;
+    cursor: pointer;
+    max-width: 220px;
+}
+#providerSelect:focus {
+    border-color: var(--accent);
+}
+#providerSelect option {
+    background: var(--surface);
+    color: var(--text);
+}
+.provider-badge {
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    transition: all 0.3s;
+}
+.provider-badge.local {
+    border-color: var(--success);
+    color: var(--success);
+}
+.provider-badge.remote {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+.provider-badge.failover {
+    border-color: var(--warn);
+    color: var(--warn);
+    animation: pulse 1.5s ease-in-out infinite;
+}
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+}
+header .status { font-size: 12px; color: var(--text-dim); margin-left: auto; }
+header .status.connected { color: var(--success); }
+header .status.error { color: var(--error); }
+.provider-status {
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    display: none;
+    align-items: center;
+    gap: 4px;
+}
+.provider-status.show { display: inline-flex; }
+.provider-status.ok { border: 1px solid var(--success); color: var(--success); }
+.provider-status.fail { border: 1px solid var(--error); color: var(--error); }
+.provider-status.checking { border: 1px solid var(--warn); color: var(--warn); animation: pulse 1s ease-in-out infinite; }
+
+/* ── Import tag (in input area) ── */
+.import-tag {
+    display: none;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    padding: 4px 10px;
+    border-radius: 6px;
+    background: var(--surface);
+    border: 1px solid var(--accent);
+    color: var(--accent);
+    white-space: nowrap;
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.import-tag .import-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.import-tag .import-remove {
+    cursor: pointer;
+    color: var(--text-dim);
+    font-size: 14px;
+    line-height: 1;
+    flex-shrink: 0;
+}
+.import-tag .import-remove:hover { color: var(--error); }
+.import-tag.show { display: inline-flex; }
+
+/* ── Output area (fills remaining space) ── */
+.output-area {
+    flex: 1;
+    overflow-y: auto;
+    padding: 24px;
+}
+.output-content {
+    max-width: 800px;
+    margin: 0 auto;
+    line-height: 1.8;
+    font-size: 15px;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+.output-content .cursor {
+    display: inline-block;
+    width: 2px;
+    height: 1em;
+    background: var(--accent);
+    animation: blink 1s step-end infinite;
+    vertical-align: text-bottom;
+    margin-left: 1px;
+}
+@keyframes blink { 50% { opacity: 0; } }
+
+.placeholder {
+    text-align: center;
+    color: var(--text-dim);
+    padding-top: 120px;
+    font-size: 14px;
+}
+
+/* ── Stats ── */
+.stats {
+    font-size: 12px;
+    color: var(--text-dim);
+    text-align: right;
+    padding: 6px 24px;
+    display: flex;
+    justify-content: flex-end;
+    gap: 16px;
+    border-top: 1px solid var(--border);
+}
+
+/* ── Input area (bottom) ── */
+.input-area {
+    padding: 12px 24px 16px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    gap: 12px;
+    align-items: flex-end;
+    background: var(--bg);
+}
+textarea {
+    flex: 1;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    padding: 12px;
+    font-size: 14px;
+    font-family: inherit;
+    resize: none;
+    min-height: 48px;
+    max-height: 200px;
+    outline: none;
+    transition: border-color 0.2s;
+}
+textarea:focus { border-color: var(--accent); }
+textarea::placeholder { color: var(--text-dim); }
+
+button {
+    padding: 10px 20px;
+    border: none;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+    white-space: nowrap;
+}
+.btn-generate {
+    background: var(--accent);
+    color: #1a1b26;
+}
+.btn-generate:hover { background: var(--accent-hover); }
+.btn-generate:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-stop {
+    background: var(--error);
+    color: #1a1b26;
+    display: none;
+}
+</style>
+</head>
+<body>
+
+<!-- Sidebar (fixed position, outside normal flow) -->
+<div class="sidebar">
+    <button class="sidebar-btn" title="导入摘要" onclick="document.getElementById('fileInput').click()">
+        <span class="icon">&#128196;</span>
+        <span class="label">导入摘要</span>
+    </button>
+    <div class="sidebar-spacer"></div>
+</div>
+
+<input type="file" id="fileInput" accept=".txt,.md" style="display:none">
+
+<header>
+    <h1>ClawStory</h1>
+    <select id="providerSelect">
+        <option value="">自动选择</option>
+    </select>
+    <span class="provider-status" id="providerStatus"></span>
+    <span class="provider-badge" id="providerBadge" style="display:none">--</span>
+    <span class="status" id="status">connecting...</span>
+</header>
+
+<div class="output-area">
+    <div class="output-content" id="output">
+        <div class="placeholder">输入故事概念，点击生成开始创作</div>
+    </div>
+</div>
+
+<div class="stats" id="stats"></div>
+
+<div class="input-area">
+    <div style="flex:1;display:flex;flex-direction:column;gap:6px;">
+        <div class="import-tag" id="importTag">
+            <span class="import-name" id="importName"></span>
+            <span class="import-remove" onclick="clearImport()">&times;</span>
+        </div>
+        <textarea id="concept" rows="1" placeholder="输入故事概念，如：一个修仙者在现代都市的冒险故事..."></textarea>
+    </div>
+    <button class="btn-generate" id="btnGen" onclick="generate()">生成</button>
+    <button class="btn-stop" id="btnStop" onclick="abort()">停止</button>
+</div>
+
+<script>
+const WS_URL = 'ws://127.0.0.1:8765';
+let ws = null;
+let generating = false;
+let charCount = 0;
+let providerAttemptCount = 0;
+let availableProviders = [];
+let importedContent = '';
+let importedFileName = '';
+
+/* ── File import ── */
+document.getElementById('fileInput').addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+        importedContent = ev.target.result;
+        importedFileName = file.name;
+        document.getElementById('importName').textContent = file.name;
+        document.getElementById('importTag').classList.add('show');
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+});
+
+function clearImport() {
+    importedContent = '';
+    importedFileName = '';
+    document.getElementById('importTag').classList.remove('show');
+}
+
+/* ── WebSocket ── */
+function connect() {
+    ws = new WebSocket(WS_URL);
+    ws.onopen = () => {
+        document.getElementById('status').textContent = 'connected';
+        document.getElementById('status').className = 'status connected';
+        ws.send(JSON.stringify({ type: 'get_providers' }));
+    };
+    ws.onclose = () => {
+        document.getElementById('status').textContent = 'disconnected';
+        document.getElementById('status').className = 'status error';
+        setTimeout(connect, 3000);
+    };
+    ws.onerror = () => {
+        document.getElementById('status').textContent = 'connection error';
+        document.getElementById('status').className = 'status error';
+    };
+    ws.onmessage = (e) => {
+        const msg = JSON.parse(e.data);
+        handleMsg(msg);
+    };
+}
+
+function populateProviderSelect(providers) {
+    availableProviders = providers;
+    const select = document.getElementById('providerSelect');
+    const currentVal = select.value;
+    select.innerHTML = '<option value="">自动选择</option>';
+    for (const p of providers) {
+        const opt = document.createElement('option');
+        opt.value = p.name;
+        opt.textContent = p.name + ' / ' + p.model;
+        select.appendChild(opt);
+    }
+    if (currentVal) {
+        let found = false;
+        for (const p of providers) {
+            if (p.name === currentVal) { found = true; break; }
+        }
+        if (found) select.value = currentVal;
+    }
+}
+
+function updateProviderBadge(provider, model) {
+    const badge = document.getElementById('providerBadge');
+    const select = document.getElementById('providerSelect');
+    providerAttemptCount++;
+
+    let found = false;
+    for (let i = 0; i < select.options.length; i++) {
+        if (select.options[i].value === provider) {
+            select.selectedIndex = i;
+            found = true;
+            break;
+        }
+    }
+
+    if (providerAttemptCount > 1) {
+        badge.style.display = 'inline-block';
+        badge.textContent = provider + ' / ' + model;
+        badge.className = 'provider-badge failover';
+        setTimeout(() => {
+            badge.classList.remove('failover');
+            badge.style.display = 'none';
+        }, 3000);
+    }
+}
+
+function handleMsg(msg) {
+    if (msg.type === 'providers') {
+        populateProviderSelect(msg.providers);
+
+    } else if (msg.type === 'check_provider_result') {
+        const el = document.getElementById('providerStatus');
+        el.className = 'provider-status show ' + (msg.ok ? 'ok' : 'fail');
+        el.textContent = msg.ok ? 'OK' : 'FAIL';
+
+    } else if (msg.type === 'provider') {
+        updateProviderBadge(msg.provider, msg.model);
+
+    } else if (msg.type === 'text_delta') {
+        if (charCount === 0) {
+            document.getElementById('output').innerHTML =
+                '<span class="cursor"></span>';
+        }
+        const output = document.getElementById('output');
+        const cursor = output.querySelector('.cursor');
+        if (cursor) {
+            cursor.insertAdjacentText('beforebegin', msg.delta);
+        } else {
+            output.textContent += msg.delta;
+        }
+        charCount += msg.delta.length;
+        updateStats();
+        output.parentElement.scrollTop = output.parentElement.scrollHeight;
+
+    } else if (msg.type === 'message_end') {
+        const cursor = document.getElementById('output').querySelector('.cursor');
+        if (cursor) cursor.remove();
+        setGenerating(false);
+
+    } else if (msg.type === 'error') {
+        const output = document.getElementById('output');
+        output.innerHTML += '<br><span style="color:var(--error)">Error: ' +
+            escapeHtml(msg.message) + '</span>';
+        setGenerating(false);
+
+    } else if (msg.type === 'abort.ack') {
+        const cursor = document.getElementById('output').querySelector('.cursor');
+        if (cursor) cursor.remove();
+        setGenerating(false);
+    }
+}
+
+function generate() {
+    const concept = document.getElementById('concept').value.trim();
+    if (!concept || generating) return;
+
+    let combined = concept;
+    if (importedContent) {
+        combined = concept + '\n\n' + importedContent;
+    }
+
+    charCount = 0;
+    providerAttemptCount = 0;
+    document.getElementById('output').innerHTML = '';
+    updateStats();
+    setGenerating(true);
+
+    const provider = document.getElementById('providerSelect').value;
+    ws.send(JSON.stringify({ type: 'generate', concept: combined, provider }));
+}
+
+function abort() {
+    if (!generating) return;
+    ws.send(JSON.stringify({ type: 'abort' }));
+}
+
+function setGenerating(val) {
+    generating = val;
+    document.getElementById('btnGen').disabled = val;
+    document.getElementById('btnStop').style.display = val ? 'inline-block' : 'none';
+}
+
+function updateStats() {
+    const statsEl = document.getElementById('stats');
+    if (charCount > 0) {
+        statsEl.innerHTML = '<span>' + charCount + ' 字</span>' +
+            '<span id="providerInfo"></span>';
+    } else {
+        statsEl.textContent = '';
+    }
+}
+
+function escapeHtml(str) {
+    return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+document.getElementById('concept').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        generate();
+    }
+});
+
+document.getElementById('providerSelect').addEventListener('change', (e) => {
+    const name = e.target.value;
+    const el = document.getElementById('providerStatus');
+    if (!name) {
+        el.className = 'provider-status';
+        return;
+    }
+    el.className = 'provider-status show checking';
+    el.textContent = '...';
+    ws.send(JSON.stringify({ type: 'check_provider', provider: name }));
+});
+
+connect();
+</script>
+</body>
+</html>
